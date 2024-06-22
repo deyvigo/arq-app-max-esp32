@@ -24,6 +24,7 @@ const io = new SocketServer(server, {
 })
 
 io.on('connection', (socket) => {
+  console.log(socket.id)
   socket.on('message', (body) => {
     socket.broadcast.emit('message', body)
   })
@@ -35,6 +36,6 @@ app.get('/helloworld', (_, res: Response) => {
   })
 })
 
-server.listen(3000, () => {
+server.listen(80, () => {
   console.log('Server on http://localhost:3000')
 })
