@@ -43,7 +43,7 @@ wss.on('connection', (ws: WebSocket) => {
 })
 
 app.get('/helloworld', (_, res: Response) => {
-  res.send({ "saludo": "Hello World" })
+  res.send({ "message": "Hello World" })
 })
 
 server.listen(PORT, '0.0.0.0', () => {
