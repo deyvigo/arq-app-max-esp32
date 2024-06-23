@@ -5,6 +5,7 @@ import http from 'node:http'
 
 const app = express()
 
+const PORT = 3000
 
 app.use(cors({
   origin: '*', // Permitir solo este origen
@@ -36,6 +37,6 @@ app.get('/helloworld', (_, res: Response) => {
   })
 })
 
-server.listen(80, () => {
-  console.log('Server on http://localhost:3000')
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server on http://0.0.0.0:${PORT}`)
 })
