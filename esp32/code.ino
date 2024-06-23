@@ -86,6 +86,7 @@ void setup() {
 
 void loop() {
   long irValue = particleSensor.getIR();
+  bool finger = true;
 
   if (checkForBeat(irValue) == true) {
     //We sensed a beat!
@@ -107,8 +108,7 @@ void loop() {
   }
 
   if (irValue < 50000) {
-    Serial.print(" No finger?");
-    Serial.println();
+    finger = false;
   }
 
   // Log values for debugging
@@ -124,6 +124,7 @@ void loop() {
   jsonDoc["ir"] = irValue;
   jsonDoc["bpm"] = beatsPerMinute;
   jsonDoc["avg_bpm"] = beatAvg;
+  jsonDoc["finger"] = finger;
 
   // Serializar el JSON a una cadena
   String jsonString;
@@ -136,7 +137,6 @@ void loop() {
     client.poll();
   }
 }
-
 
 
 // Test code
