@@ -24,7 +24,7 @@ export const ProgressIndicator = ({ bpm, active }) => {
       <Circle progress={progress} />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-9xl">
-          {bpm ? bpm : 0}
+          {bpm ? bpm.toFixed(0) : 0}
         </span>
         <span className=" text-3xl text-gray-400">
           BPM

@@ -22,8 +22,8 @@ export const Chart = ({ bpm, avg_bpm }) => {
     <div className='w-full relative'>
       <ChartLine latidos={latidos} />
       <ChartReadingBpm text='Promedio' data={avg_bpm} pos='l' />
-      <ChartReadingBpm text='Minimo' data={latidoMinimo} pos='c' />
-      <ChartReadingBpm text='Maximo' data={latidoMaximo} pos='r' />
+      <ChartReadingBpm text='Minimo' data={latidoMinimo.toFixed(2)} pos='c' />
+      <ChartReadingBpm text='Maximo' data={latidoMaximo.toFixed(2)} pos='r' />
     </div>
   )
 }
