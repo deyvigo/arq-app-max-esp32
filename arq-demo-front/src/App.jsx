@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Card } from './Card'
+import { ProgressIndicator } from './components/ProgressIndicator'
+import { MeasurementIndicator } from './components/MeasurementIndicator'
+import { Chart } from './components/Chart'
 
 const ws = new WebSocket('ws://192.168.0.110:3000')
 
 function App() {
-  const [actualMessage, setActualMessage] = useState([])
+  const [actualMessage, setActualMessage] = useState({})
 
   useEffect(() => {
     const handleReceivedMessage = (event) => {
       const message = JSON.parse(event.data)
-      setActualMessage([message])
+      setActualMessage(message)
     }
     ws.addEventListener('message', handleReceivedMessage)
 
@@ -18,21 +20,18 @@ function App() {
     }
   }, [])
 
+  console.log("message", actualMessage)
+
+  const { ir, bpm, avg_bpm, finger } = actualMessage
+
   return (
     <>
-      <div className="w-[500px] border-2 border-sky-300 rounded-lg p-6">
-        <h1 className="text-6xl text-center">Heart Rate App</h1>
-        <div className="mt-6">
-          { actualMessage.map(({ ir, bpm, avg_bpm, finger }, index) => (
-            <Card
-              key={ index }
-              avg_bpm={ avg_bpm }
-              ir={ ir } bpm={ bpm }
-              finger={ finger }
-            />
-          ))}
-        </div>
-      </div>
+      <main className='w-full flex flex-col items-center justify-between min-h-dvh'>
+        <h1 className="text-4xl py-8 text-center">Heart Rate App</h1>
+        <ProgressIndicator bpm={bpm} active={finger} />
+        <MeasurementIndicator active={finger} />
+        <Chart bpm={bpm} avg_bpm={avg_bpm} />
+      </main >
     </>
   )
 }
