@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
 import { AlertIcon } from "../icons/AlertIcon"
 import { CloseIcon } from "../icons/CloseIcon"
+import { useMessage } from "../hooks/useMessage"
 
-export const Alerts = ({ emergencyFall, emergencyBPM, emergencyInactive }) => {
+export const Alerts = () => {
   const [alertTItle, setAlertTitle] = useState('')
   const [alertMessage, setAlertMessage] = useState('')
+
+  const { emergencyBPM, emergencyFall, emergencyInactive } = useMessage()
 
   useEffect(() => {
     if (emergencyFall) {

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Circle } from "./Circle";
 import { MeasurementIndicator } from "./MeasurementIndicator";
+import { useMessage } from "../hooks/useMessage";
 
-export const ProgressIndicator = ({ bpm, active }) => {
+export const ProgressIndicator = () => {
   const [progress, setProgress] = useState(0);
+
+  const { bpm, finger: active } = useMessage()
 
   useEffect(() => {
     if (!active) return

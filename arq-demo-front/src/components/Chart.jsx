@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react"
 import ChartLine from "./ChartLine"
 import { ChartReadingBpm } from "./ChartReadingBpm"
+import { useMessage } from "../hooks/useMessage"
 
-export const Chart = ({ bpm, avg_bpm }) => {
+export const Chart = () => {
   const [latidos, setLatidos] = useState([])
   const [latidoMinimo, setLatidoMinimo] = useState(0)
   const [latidoMaximo, setLatidoMaximo] = useState(0)
+
+  const { bpm, avg_bpm } = useMessage()
+
+  console.log("BPM", bpm)
+
 
   useEffect(() => {
     setLatidos(prevLatidos => (bpm !== undefined ? [...prevLatidos, bpm] : prevLatidos));
