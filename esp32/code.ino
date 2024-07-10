@@ -5,12 +5,23 @@ const char* password = "72277232";
 #include <ArduinoJson.h>
 #include <WiFi.h>
 
-const char* websockets_connection_string = "192.168.0.110";
+const char* websockets_connection_string = "192.168.18.11";
 
 #include "MAX30105.h"
 #include "heartRate.h"
 
+#define BUTTON_PIN 13
+#define FALL_THRESHOULD 15.0
+#define INACTIVITY_DURATION 10000 // 10 seconds
+#define INACTIVITY_THRESHOLD 1.0
+#define BPM_THRESHOLD 50
+
 MAX30105 particleSensor;
+
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+Adafruit_MPU6050 mpu;
 
 const byte RATE_SIZE = 4; //Increase this for more averaging. 4 is good.
 byte rates[RATE_SIZE]; //Array of heart rates
@@ -20,7 +31,58 @@ long lastBeat = 0; //Time at which the last beat occurred
 float beatsPerMinute;
 int beatAvg;
 
+//Estado del sistema
+bool systemActivated = false;
+
+//
+float gyroX, gyroY, gyroZ;
+float accX, accY, accZ;
+float temperature;
+
+//Gyroscope sensor deviation
+float gyroXerror = 0.09;
+float gyroYerror = 0.03;
+float gyroZerror = 0.01;
+
+//Aceleracion sensor error
+float accXerror = 0;
+float accYerror = 0;
+float accZerror = 0;
+
+//Alarma de emergencia
+bool emergencyBPM = false;
+bool emergencyFall = false;
+bool emergencyInactive = false;
+
+long lastMovementTime = 0;
+bool isInactive = false;
+
+unsigned long lastResetTime = 0;
+
 using namespace websockets;
+
+// Calibrar el acelerometro
+void calibrateAccelerometer() {
+  const int numReadings = 100;
+  float sumAccX = 0;
+  float sumAccY = 0;
+  float sumAccZ = 0;
+
+  for (int i = 0; i < numReadings; i++) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    sumAccX += a.acceleration.x;
+    sumAccY += a.acceleration.y;
+    sumAccZ += a.acceleration.z;
+    delay(10);
+  }
+
+  accXerror = sumAccX / numReadings;
+  accYerror = sumAccY / numReadings;
+  accZerror = (sumAccZ / numReadings) - 9.81; // Ajustar para la gravedad
+
+  Serial.println("Calibración completada:");
+}
 
 void onMessageCallback(WebsocketsMessage message) {
   Serial.print("Got Message: ");
@@ -40,6 +102,35 @@ void onEventsCallback(WebsocketsEvent event, String data) {
 }
 
 WebsocketsClient client;
+
+void resetVariables() {
+  beatsPerMinute = 0;
+  beatAvg = 0;
+  rateSpot = 0;
+  lastBeat = 0;
+
+  gyroX = 0;
+  gyroY = 0;
+  gyroZ = 0;
+  accX = 0;
+  accY = 0;
+  accZ = 0;
+  temperature = 0;
+
+  emergencyBPM = false;
+  emergencyInactive = false;
+  emergencyFall = false;
+
+  lastMovementTime = 0;
+  isInactive = false;
+
+  for (byte i = 0; i < RATE_SIZE; i++) {
+    rates[i] = 0;
+  }
+
+  Serial.println("Variables reseteadas");
+}
+
 void setup() {
   Serial.begin(115200);
   WiFi.begin(ssid, password);
@@ -82,62 +173,178 @@ void setup() {
   particleSensor.setup(); //Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
   particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+
+  //Configrura el boton
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Inicializa el sensor MPU6050
+  if (!mpu.begin()) {
+    Serial.println("No se pudo encontrar el MPU6050, revisa tu conexion!");
+    while (1) delay(10);
+  }
+  Serial.println("MPU6050 encontrado!");
+  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  calibrateAccelerometer();
 }
 
 void loop() {
-  long irValue = particleSensor.getIR();
-  bool finger = true;
+  // Leer el estado del botón
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    delay(50);  // Debounce del botón
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      systemActivated = !systemActivated;  // Alternar el estado del sistema
+      Serial.print("Sistema ");
+      Serial.println(systemActivated ? "activado" : "desactivado");
 
-  if (checkForBeat(irValue) == true) {
-    //We sensed a beat!
-    long delta = millis() - lastBeat;
-    lastBeat = millis();
+      resetVariables();
 
-    beatsPerMinute = 60 / (delta / 1000.0);
-
-    if (beatsPerMinute < 255 && beatsPerMinute > 20) {
-      rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-      rateSpot %= RATE_SIZE; //Wrap variable
-
-      //Take average of readings
-      beatAvg = 0;
-      for (byte x = 0 ; x < RATE_SIZE ; x++)
-        beatAvg += rates[x];
-      beatAvg /= RATE_SIZE;
+      delay(500);  // Pequeña pausa para evitar múltiples alternancias
     }
   }
 
-  if (irValue < 50000) {
-    finger = false;
-  }
-
-  // Log values for debugging
-  Serial.print("IR: ");
-  Serial.print(irValue);
-  Serial.print(" BPM: ");
-  Serial.print(beatsPerMinute);
-  Serial.print(" Avg BPM: ");
-  Serial.println(beatAvg);
-
-
+  long irValue = particleSensor.getIR();
+  bool finger = false;
+ 
   StaticJsonDocument<200> jsonDoc;
-  jsonDoc["ir"] = irValue;
-  jsonDoc["bpm"] = beatsPerMinute;
-  jsonDoc["avg_bpm"] = beatAvg;
-  jsonDoc["finger"] = finger;
 
+  if(systemActivated){
+    
+    if (checkForBeat(irValue) == true) {
+      //We sensed a beat!
+      long delta = millis() - lastBeat;
+      lastBeat = millis();
+
+      beatsPerMinute = 60 / (delta / 1000.0);
+
+      if (beatsPerMinute < 255 && beatsPerMinute > 20) {
+        rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
+        rateSpot %= RATE_SIZE; //Wrap variable
+
+        //Take average of readings
+        beatAvg = 0;
+        for (byte x = 0 ; x < RATE_SIZE ; x++)
+          beatAvg += rates[x];
+        beatAvg /= RATE_SIZE;
+      }
+    }
+    
+    if (irValue > 50000) {
+      finger = true;
+    }
+
+    // Log values for debugging
+    Serial.print("IR: ");
+    Serial.print(irValue);
+    Serial.print(" BPM: ");
+    Serial.print(beatsPerMinute);
+    Serial.print(" Avg BPM: ");
+    Serial.println(beatAvg);
+
+    // Leer datos del MPU6050
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+
+    float gyroX_temp = g.gyro.x;
+    if(abs(gyroX_temp) > gyroXerror)  {
+      gyroX += gyroX_temp/50.00;
+    }
+
+    float gyroY_temp = g.gyro.y;
+    if(abs(gyroY_temp) > gyroYerror) {
+      gyroY += gyroY_temp/70.00;
+    }
+
+    float gyroZ_temp = g.gyro.z;
+    if(abs(gyroZ_temp) > gyroZerror) {
+      gyroZ += gyroZ_temp/90.00;
+    }
+
+    // Obtener los valores de la aceleracion
+    accX = a.acceleration.x - accXerror;
+    accY = a.acceleration.y - accYerror;
+    accZ = a.acceleration.z - accZerror;
+
+    temperature = temp.temperature;
+
+    // Calular la magnitud de la aceleracion
+    float accMagnitude = sqrt(accX * accX + accY * accY + accZ * accZ);
+
+    // Detectar caidas del usuario
+    if (accX > FALL_THRESHOULD || accY > FALL_THRESHOULD || accZ > FALL_THRESHOULD){
+      emergencyFall = true;
+      Serial.println("Caída detectada!");
+    }
+
+    // Verificar BPM alto
+    if (beatsPerMinute > BPM_THRESHOLD){
+      emergencyBPM = true;
+      Serial.println("BPM alto detectado!");
+    }
+
+    // Verificar Inactividad
+    if (abs(accMagnitude - 9.81) < INACTIVITY_THRESHOLD) { // Ajuste para gravedad
+      if (!isInactive) {
+        lastMovementTime = millis(); // Iniciar el temporizador de inactividad
+        isInactive = true;
+      } else if (millis() - lastMovementTime > INACTIVITY_DURATION) {
+        emergencyInactive = true;
+        Serial.println("Inactividad detectada!");
+      }
+    } else {
+      isInactive = false;
+    }
+
+    // Imprimir los valores del acelerómetro y giroscopio
+    Serial.print("Aceleración X: "); Serial.print(accX); Serial.print(" m/s^2");
+    Serial.print("\tY: "); Serial.print(accY); Serial.print(" m/s^2");
+    Serial.print("\tZ: "); Serial.print(accZ); Serial.println(" m/s^2");
+
+    Serial.print("Giroscopio X: "); Serial.print(gyroX); Serial.print(" rad/s");
+    Serial.print("\tY: "); Serial.print(gyroY); Serial.print(" rad/s");
+    Serial.print("\tZ: "); Serial.print(gyroZ); Serial.println(" rad/s");
+
+    jsonDoc["ir"] = irValue;
+    jsonDoc["bpm"] = beatsPerMinute;
+    jsonDoc["avg_bpm"] = beatAvg;
+    jsonDoc["finger"] = finger;
+    jsonDoc["acceleration_x"] = accX;
+    jsonDoc["acceleration_y"] = accY;
+    jsonDoc["acceleration_z"] = accZ;
+    jsonDoc["gyro_x"] = gyroX;
+    jsonDoc["gyro_y"] = gyroY;
+    jsonDoc["gyro_z"] = gyroZ;
+    jsonDoc["temperature"] = temperature;
+    jsonDoc["emergencyBPM"] = emergencyBPM;
+    jsonDoc["emergencyFall"] = emergencyFall;
+    jsonDoc["emergencyInactive"] = emergencyInactive;
+  }
+  
+  
+  jsonDoc["systemActive"] = systemActivated;
+  
   // Serializar el JSON a una cadena
   String jsonString;
   serializeJson(jsonDoc, jsonString);
 
   // Enviar el JSON al servidor
   client.send(jsonString);
+
   // let the websockets client check for incoming messages
   if(client.available()) {
     client.poll();
   }
-}
 
+  if (millis() - lastResetTime > 1000) {
+    emergencyBPM = false;
+    emergencyFall = false;
+    emergencyInactive = false;
+    lastResetTime = millis();
+    Serial.println("Estados de emergencia reseteados");
+  }
+}
 
 // Test code
 

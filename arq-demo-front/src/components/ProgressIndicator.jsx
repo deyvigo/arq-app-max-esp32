@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { Circle } from "./Circle";
+import { MeasurementIndicator } from "./MeasurementIndicator";
+import { useMessage } from "../hooks/useMessage";
 
-export const ProgressIndicator = ({ bpm, active }) => {
+export const ProgressIndicator = () => {
   const [progress, setProgress] = useState(0);
+
+  const { bpm, finger: active } = useMessage()
 
   useEffect(() => {
     if (!active) return
@@ -23,7 +27,8 @@ export const ProgressIndicator = ({ bpm, active }) => {
       <div className=" border-4 size-full border-gray-400 rounded-full"></div>
       <Circle progress={progress} />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-9xl">
+        <MeasurementIndicator active={active} />
+        <span className="text-8xl">
           {bpm ? bpm.toFixed(0) : 0}
         </span>
         <span className=" text-3xl text-gray-400">
